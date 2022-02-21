@@ -1,0 +1,106 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
+@using System.Net
+
+<PageTitle>Index</PageTitle>
+
+<h1>Hello, world!</h1>
+
+Welcome to your new app.
+
+<SurveyPrompt Title="How is Blazor working for you?" />
+
+<button @onclick="(() => NoErrorHttpClient())" >Http client with no error</button>
+<br />
+<button @onclick="(() => ErrorHttpClient())" >Http client with JavaScriupt error</button>
+
+@code{
+    [Inject] ProtectedLocalStorage? _protectedLocalStorage { get; set; }
+    [Inject] IHttpClientFactory? _httpClientFactory { get; set; }
+
+    private string _token = "Some token";
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        if (_protectedLocalStorage is not null)
+        {
+            Console.WriteLine("SaveTokenAsync");
+            await _protectedLocalStorage.SetAsync("TokenPurpose", "TokenKey", _token).ConfigureAwait(false);
+        }
+
+        await base.OnInitializedAsync();
+    }
+
+
+    //Should fail with "No such host is known."
+    private async Task NoErrorHttpClient()
+    {
+        var theToken = "";
+
+        if (_protectedLocalStorage is not null)
+        {
+            ProtectedBrowserStorageResult<string> cacheResult = await _protectedLocalStorage.GetAsync<string>("TokenPurpose", "TokenKey").ConfigureAwait(false);
+            if (cacheResult.Success && cacheResult.Value is not null)
+            {
+                theToken =  cacheResult.Value;
+            }
+        }
+
+        var httpClient = _httpClientFactory?.CreateClient();
+        httpClient?.DefaultRequestHeaders.Add("Authorization", $"Bearer {theToken}");
+        var response = await httpClient.PostAsync("https://Base" + "/api/Controller/Method", null).ConfigureAwait(false);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.OK:
+                {
+                    var result = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    break;
+                }
+            default: 
+                {
+                    break;
+                }
+        }
+    }
+
+    // Fails with "Error: System.InvalidOperationException: JavaScript interop calls cannot be issued at this time. This is because the component is being statically rendered. 
+    // When prerendering is enabled, JavaScript interop calls can only be performed during the OnAfterRenderAsync lifecycle method."
+    //
+    // Note: _Host.cshtml => <component type="typeof(App)" render-mode="Server" />
+    //       _Layout.cshtml => <component type="typeof(HeadOutlet)" render-mode="Server" />
+    //
+    // Fails in AuthenticationHeaderHandler.cs when the DelegatingHandler tries to retrieve the token information from ProtectedLocalStorage
+    // See Program.cs for Http client setup
+    private async Task ErrorHttpClient()
+    {
+        var theToken = "";
+
+        if (_protectedLocalStorage is not null)
+        {
+            ProtectedBrowserStorageResult<string> cacheResult = await _protectedLocalStorage.GetAsync<string>("TokenPurpose", "TokenKey").ConfigureAwait(false);
+            if (cacheResult.Success && cacheResult.Value is not null)
+            {
+                theToken =  cacheResult.Value;
+            }
+        }
+
+        var httpClient = _httpClientFactory?.CreateClient("ConfiguredClient");
+        var response = await httpClient.PostAsync("https://Base" + "/api/Controller/Method", null).ConfigureAwait(false);
+
+        switch (response.StatusCode)
+        {
+            case HttpStatusCode.OK:
+                {
+                    var result = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    break;
+                }
+            default: 
+                {
+                    break;
+                }
+        }
+    }
+
+}
